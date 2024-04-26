@@ -2,31 +2,52 @@ import {
   AbilityBuilder,
   CreateAbility,
   createMongoAbility,
-  ForcedSubject,
   MongoAbility,
 } from '@casl/ability'
 
+import { User } from './models/user'
+import { permissions } from './permissions'
+import { BillingSubject } from './subjects/billing'
+import { InviteSubject } from './subjects/invite'
+import { OrganizationSubject } from './subjects/organization'
+import { ProjectSubject } from './subjects/project'
+import { UserSubject } from './subjects/user'
+
+export * from './models/organization'
+export * from './models/user'
+export * from './models/project'
+
 // Both manage and all are intern casl options
 // manage means that the user has all the permissions in an subject
-const actions = ['invite', 'delete', 'manage'] as const
 // all means all subjects, used for give admin or owner permissions
-const subjects = ['User', 'all'] as const
 
-type AppAbilities = [
-  (typeof actions)[number],
-  (
-    | (typeof subjects)[number]
-    | ForcedSubject<Exclude<(typeof subjects)[number], 'all'>>
-  ),
-]
+type AppAbilities =
+  | UserSubject
+  | ProjectSubject
+  | OrganizationSubject
+  | InviteSubject
+  | BillingSubject
+  | ['manage', 'all']
 
 export type AppAbility = MongoAbility<AppAbilities>
 export const createAppAbility = createMongoAbility as CreateAbility<AppAbility>
 
-// by default the user can't do anything, we have to give permissions
-const { can, cannot, build } = new AbilityBuilder(createAppAbility)
+export function defineAbilityFor(user: User) {
+  // by default the user can't do anything, we have to give permissions
+  const builder = new AbilityBuilder(createAppAbility)
 
-can('invite', 'User')
-cannot('delete', 'User')
+  // check if we recieve an user with an wrong role option
+  if (typeof permissions[user.role] !== 'function') {
+    throw new Error(`Permissions for role ${user.role} not found`)
+  }
 
-export const ability = build()
+  permissions[user.role](user, builder)
+
+  const ability = builder.build({
+    detectSubjectType(subject) {
+      return subject.__typename
+    },
+  })
+
+  return ability
+}
