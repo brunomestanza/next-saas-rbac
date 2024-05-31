@@ -1,0 +1,142 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 String         @id @default(uuid())
+  // In Github, the name is optional
+  name               String?
+  email              String         @unique
+  // In Github, we dont have access to user password
+  passwordHash       String?        @map("password_hash")
+  avatarUrl          String?        @map("avatar_url")
+  tokens             Token[]
+  accounts           Account[]
+  invites            Invite[]
+  member_on          Member[]
+  owns_organizations Organization[]
+  owns_projects      Project[]
+  createdAt          DateTime       @default(now()) @map("created_at")
+  updatedAt          DateTime       @updatedAt @map("updated_at")
+
+  @@map("users")
+}
+
+enum TokenType {
+  PASSWORD_RECOVER
+}
+
+// This token is used for password resets or any others functions that need an signed url
+model Token {
+  id        String    @id @default(uuid())
+  type      TokenType
+  userId    String    @map("user_id")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("tokens")
+}
+
+enum AccountProvider {
+  GITHUB
+}
+
+// An user can have many different accounts of different providers
+// Exemples: Github, Google, Twitter (X), Facebook
+model Account {
+  id                String          @id @default(uuid())
+  provider          AccountProvider
+  providerAccountId String          @unique @map("provider_account_id")
+  userId            String          @map("user_id")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Each account can have only one combination of provider and userId
+  // That means that an user can only have one GitHub account for example
+  @@unique([provider, userId])
+  @@map("accounts")
+}
+
+enum Role {
+  ADMIN
+  MEMBER
+  BILLING
+}
+
+model Invite {
+  id             String   @id @default(uuid())
+  email          String
+  role           Role
+  authorId       String?  @map("author_id")
+  organizationId String   @map("organization_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  // The invite persists even if the user account was deleted
+  author       User?        @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  // I can't have 2 invites with the same e-mail in an organization
+  @@unique([email, organizationId])
+  // Allows faster searchs by some column in the database
+  // It will not execute all lines, only the relevant ones
+  @@index([email])
+  @@map("invites")
+}
+
+// An user can be a member in many organizations
+model Member {
+  id             String @id @default(uuid())
+  role           Role   @default(MEMBER)
+  organizationId String @map("organization_id")
+  userId         String @map("user_id")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id])
+
+  // We can't have an user twice in an application
+  @@unique([organizationId, userId])
+  @@map("members")
+}
+
+model Organization {
+  id                        String    @id @default(uuid())
+  name                      String
+  slug                      String    @unique
+  domain                    String?   @unique
+  // If an user log with an organization domain, it is attached in the domain
+  shouldAttachUsersByDomain Boolean   @default(false) @map("should_attach_users_by_domain")
+  avatarUrl                 String?   @map("avatar_url")
+  ownerId                   String    @map("owner_id")
+  invites                   Invite[]
+  members                   Member[]
+  projects                  Project[]
+  createdAt                 DateTime  @default(now()) @map("created_at")
+  updatedAt                 DateTime  @updatedAt @map("updated_at")
+
+  owner User @relation(fields: [ownerId], references: [id])
+
+  @@map("organizations")
+}
+
+model Project {
+  id             String   @id @default(uuid())
+  name           String
+  description    String
+  slug           String   @unique
+  avatarUrl      String?  @map("avatar_url")
+  ownerId        String   @map("owner_id")
+  organizationId String   @map("organization_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  owner        User         @relation(fields: [ownerId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("projects")
+}

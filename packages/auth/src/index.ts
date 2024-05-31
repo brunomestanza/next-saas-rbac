@@ -16,6 +16,7 @@ import { UserSubject } from './subjects/user'
 export * from './models/organization'
 export * from './models/user'
 export * from './models/project'
+export * from './roles'
 
 // Both manage and all are intern casl options
 // manage means that the user has all the permissions in an subject
@@ -48,6 +49,9 @@ export function defineAbilityFor(user: User) {
       return subject.__typename
     },
   })
+
+  ability.can = ability.can.bind(ability)
+  ability.cannot = ability.can.bind(ability)
 
   return ability
 }
